@@ -3,7 +3,7 @@
 
 enum {__MINIMUM_BLOCKSIZE = 1024 * 8};
 enum {__MAXIMUM_BLOCKSIZE = 1024 * 128};
-enum {__DEFAULT_POOL_SIZE = 8};
+enum {__DEFAULT_POOL_SIZE = 128};
 enum {__NSIZELEVEL = __MAXIMUM_BLOCKSIZE / __MINIMUM_BLOCKSIZE};
 
 class MemoryPool

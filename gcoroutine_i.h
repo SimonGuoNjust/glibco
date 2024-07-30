@@ -7,7 +7,7 @@
 
 struct Coroutine;
 struct CoScheduler;
-enum {__MAX_COROUTINES=128};
+enum {__MAX_COROUTINES=100000};
 
 struct Stack
 {

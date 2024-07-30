@@ -1,7 +1,11 @@
 #ifndef __GCO_ROUTINE_H__
 #define __GCO_ROUTINE_H__
-
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#include <windows.h>
+#elif defined(__linux__)
 #include <ucontext.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -17,6 +21,7 @@ enum coroutine_status {
         EXITED
 };
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
 
 struct Coroutine
 {
@@ -27,6 +32,20 @@ struct Coroutine
     coroutine_status status;
     Stack* st_mem;
 };
+
+#elif defined(__linux__)
+
+struct Coroutine
+{
+    CoScheduler* co_sch;
+    fn_coroutine func;
+    void* args;
+    ucontext_t context;
+    coroutine_status status;
+    Stack* st_mem;
+};
+
+#endif
 
 struct CoScheduler
 {

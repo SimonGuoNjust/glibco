@@ -36,6 +36,7 @@ func_wrapper(uint32_t low32, uint32_t hi32) {
 	int id = S->running;
 	struct Coroutine *C = S->coroutines[id];
 	C->func(S, C->args);	// 中间有可能会有不断的yield
+	C->status = ENDED;
 	coroutine_close(S, C);
 	S->coroutines[id] = NULL;
 	--S->nco;
@@ -87,7 +88,7 @@ int coroutine_new(CoScheduler* S, fn_coroutine func, void* args)
     new_co -> st_mem = NULL;
     if (S->nco >= S->cap) {
 		int id = S->cap;
-		S->coroutines = (Coroutine**)(S->coroutines, S->cap * 2 * sizeof(struct Coroutines *));
+		S->coroutines = (Coroutine**)realloc(S->coroutines, S->cap * 2 * sizeof(struct Coroutines *));
 		memset(S->coroutines + S->cap , 0 , sizeof(struct Coroutine *) * S->cap);
 		S->coroutines[S->cap] = new_co;
 		S->cap *= 2;
@@ -104,6 +105,7 @@ int coroutine_new(CoScheduler* S, fn_coroutine func, void* args)
 			}
 		}
 	}
+	return -1;
 }
 
 void coroutine_resume(CoScheduler* S, int id)
@@ -122,9 +124,9 @@ void coroutine_resume(CoScheduler* S, int id)
 	case READY:
 	    //初始化ucontext_t结构体,将当前的上下文放到C->ctx里面
 		getcontext(&C->context);
-		C->st_mem = S->stack_pool->get_stack(__MINIMUM_BLOCKSIZE);
+		C->st_mem = S->stack_pool->get_stack(__MINIMUM_BLOCKSIZE * 2);
 		C->context.uc_stack.ss_sp = C->st_mem->st_top;
-		C->context.uc_stack.ss_size = __MINIMUM_BLOCKSIZE;
+		C->context.uc_stack.ss_size = __MINIMUM_BLOCKSIZE * 2;
 		C->context.uc_link = &S->main_ctx;
 
 		S->running = id;

@@ -23,7 +23,7 @@ void* MemoryPool::refill(int n_bytes)
     StackMem* return_node;
     StackMem* cur_node, *next_node;
     int i;
-    if (n_nodes = 1) return (new_mem);
+    if (n_nodes == 1) return (new_mem);
     freelist_node = free_list + get_index(n_bytes);
     return_node = (StackMem*)new_mem;
     *freelist_node = next_node = (StackMem*)(new_mem + n_bytes);
@@ -49,7 +49,7 @@ char* MemoryPool::mem_alloc(int size, int n_nodes)
     char* return_mem;
     int total_bytes = size * n_nodes;
     int bytes_left = end_free - start_free;
-    std::cout<< size<< " " << n_nodes << " " << total_bytes << " " << bytes_left << std::endl;
+    // std::cout<< size<< " " << n_nodes << " " << total_bytes << " " << bytes_left << std::endl;
     if (bytes_left >= total_bytes) {
         return_mem = start_free;
         start_free += total_bytes;
