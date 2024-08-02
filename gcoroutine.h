@@ -1,16 +1,22 @@
 #ifndef __GCO_ROUTINE_H__
 #define __GCO_ROUTINE_H__
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#include <windows.h>
-#elif defined(__linux__)
+#ifdef USE_BOOST_CONTEXT
+#include <boost/context/all.hpp>
+using namespace boost::context::detail;
+#else
 #include <ucontext.h>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
 
-typedef void(*fn_coroutine)(struct CoScheduler*, void *);
+
+typedef void(*fn_coroutine)(void *);
+
+// using fn_coroutine = std::function<void(struct Coroutine*, void*)>;
 struct Stack;
+struct CoScheduler;
+using CoroutineContext = void*;
 class StackPool;
 
 enum coroutine_status {
@@ -21,36 +27,33 @@ enum coroutine_status {
         EXITED
 };
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-
 struct Coroutine
 {
-    CoScheduler* co_sch;
+    // CoScheduler* co_sch;
+    coroutine_status status;
     fn_coroutine func;
     void* args;
-    ucontext_t context;
-    coroutine_status status;
-    Stack* st_mem;
+    CoroutineContext co_ctx;
+    CoroutineContext main_ctx;
+    // Stack* st_mem;
 };
 
-#elif defined(__linux__)
-
-struct Coroutine
+struct jump_data
 {
-    CoScheduler* co_sch;
-    fn_coroutine func;
-    void* args;
-    ucontext_t context;
-    coroutine_status status;
-    Stack* st_mem;
+    Coroutine* co;
+    fcontext_t main_ctx;
 };
 
-#endif
+struct func_args
+{
+	Coroutine* co;
+	void* args;
+};
 
 struct CoScheduler
 {
     StackPool* stack_pool;
-    ucontext_t main_ctx;
+    CoroutineContext* return_ctx;
     Coroutine** coroutines;
     int nco;
     int cap;
