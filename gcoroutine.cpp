@@ -1,5 +1,5 @@
 #include <gcoroutine_i.h>
-
+#include <functional>
 StackPool::StackPool(char is_shared)
 {
     if (is_shared == 0)
@@ -14,8 +14,8 @@ Stack* StackPool::get_stack(unsigned int bytes)
     new_stack->bind_co = NULL;
     new_stack->size = bytes;
     // new_stack->st_top = (char*)memory_manager->get_buffer(bytes);
-	new_stack->st_top = (char*)malloc(bytes);
-    new_stack->st_bottom = new_stack->st_top + bytes;
+	new_stack->st_top = malloc(bytes);
+    new_stack->st_bottom = static_cast< char * >( new_stack->st_top) + bytes;
     return new_stack;
 }
 
@@ -33,68 +33,72 @@ StackPool::~StackPool()
     delete memory_manager;
 }
 
-#ifdef USE_BOOST_CONTEXT
+void Coroutine::destroy(Coroutine* c)
+{
+	StackPool* alloc = c->salloc_;
+	Stack* sctx = c->sctx_;
+	c->~Coroutine();
+	alloc->release_stack(sctx);
+}
 
+fcontext_t Coroutine::run(fcontext_t fctx)
+{
+	transfer_t res_t{fctx};
+	status = RUNNING;
+	fn_(res_t);
+	// std::invoke(fn_, std::move(res_t), std::move(args_));
+	return jump_fcontext(fctx, nullptr).fctx;
+}
 
-static void
-func_wrapper(transfer_t t) {
-	struct Coroutine *C = reinterpret_cast<Coroutine*>(t.data);
-	func_args args = {C, C->args}; 
-	C->main_ctx = t.fctx;
-	C->func((void*)&args);
-	C->status = ENDED;
+void Coroutine::close()
+{
+	destroy(this);
+}
+
+// transfer_t on_coroutine_close(transfer_t t)
+// {
+// 	Coroutine* c = static_cast<Coroutine*>(t.data);
+// 	c->close();
+// 	return {nullptr, nullptr};
+// }
+static void dummpy()
+{
+	int a;
+}
+void func_wrapper(transfer_t t)
+{
+	Coroutine* c = static_cast<Coroutine*>(t.data);
+	assert(nullptr != t.fctx);
+	assert(nullptr != c);
+	t = jump_fcontext(t.fctx, nullptr);
+	std::cout << "here" << std::endl;
+	t.fctx = c->run(t.fctx);
+	c->status = ENDED;
 	jump_fcontext(t.fctx, nullptr);
+	// ontop_fcontext(t.fctx, c, on_coroutine_close);
 }
-#else
-static void
-func_wrapper(uint32_t low32, uint32_t hi32) {
-	uintptr_t ptr = (uintptr_t)low32 | ((uintptr_t)hi32 << 32);
-	struct CoScheduler *S = (struct CoScheduler *)ptr;
 
-	int id = S->running;
-	struct Coroutine *C = S->coroutines[id];
-	C->func(S, C->args);
-	C->status = ENDED;
-	coroutine_close(S, C);
-	S->coroutines[id] = NULL;
-	--S->nco;
-	S->running = -1;
-}
-#endif
-struct CoScheduler* coscheculer_open()
+CoScheduler::CoScheduler()
 {
-    CoScheduler* new_sch = (CoScheduler*)malloc(sizeof(*new_sch));
-    new_sch -> nco = 0;
-    new_sch -> cap = __MAX_COROUTINES;
-    new_sch -> running = -1;
-    new_sch -> coroutines = (Coroutine**)calloc(new_sch->cap, sizeof(Coroutine*));
-	// #ifdef USE_BOOST_CONTEXT
-	// new_sch -> return_ctx = (CoroutineContext*)calloc(new_sch->cap, sizeof(CoroutineContext));
-	// #else
-	// new_sch -> return_ctx = (CoroutineContext*)malloc(sizeof(CoroutineContext));
-	// #endif
-    new_sch -> stack_pool = new StackPool();
-    return new_sch;
+	this -> nco = 0;
+	this -> cap = __MAX_COROUTINES;
+	this -> running = -1;
+	this -> stack_pool = new StackPool();
+	this->coroutines.resize(this->cap);
 }
 
-void coscheculer_close(CoScheduler* S)
+void CoScheduler::close()
 {
-    int i;
-    for (i=0;i<S->cap;i++) {
-		Coroutine* co = S->coroutines[i];
-
+	int i;
+	for (i=0;i<this->cap;i++) {
+		Coroutine* co = this->coroutines[i];
 		if (co) {
-			coroutine_close(S, co);
-		}
-	}
-	free(S->coroutines);
-	free(S->return_ctx);
-    delete S->stack_pool;
-	S->return_ctx = NULL;
-	S->coroutines = NULL;
-    S->stack_pool = NULL;
-	free(S);
-};
+			co->close();
+			}
+	};
+	delete this->stack_pool;
+	this->stack_pool = NULL;
+}
 
 void coroutine_close(CoScheduler* S, Coroutine* co)
 {
@@ -103,117 +107,70 @@ void coroutine_close(CoScheduler* S, Coroutine* co)
     free(co);
 }
 
-int coroutine_new(CoScheduler* S, fn_coroutine func, void* args)
+int coroutine_new(CoScheduler* S, fn_coroutine&& func, void* args)
 {
-    Coroutine* new_co = (Coroutine*)malloc(sizeof(*new_co));
-	memset(new_co, 0, sizeof(*new_co));
-    new_co -> func = func;
-    new_co -> args = args;
-    // new_co -> co_sch = S;
-    new_co -> status = READY;
-    // new_co -> st_mem = S->stack_pool->get_stack(__MINIMUM_BLOCKSIZE);
-    if (S->nco >= S->cap) {
-		int id = S->cap;
-		S->coroutines = (Coroutine**)realloc(S->coroutines, S->cap * 2 * sizeof(struct Coroutines *));
-		memset(S->coroutines + S->cap , 0 , sizeof(struct Coroutine *) * S->cap);
-		S->coroutines[S->cap] = new_co;
-		S->cap *= 2;
-		++S->nco; 
-		return id;
-	} else {
-		int i;
-		for (i=0;i<S->cap;i++) {
-			int id = (i+S->nco) % S->cap;
-			if (S->coroutines[id] == NULL) {
-				S->coroutines[id] = new_co;
-				++S->nco;
-				return id;
-			}
+	Stack* sctx = S->stack_pool->get_stack(__MINIMUM_BLOCKSIZE);
+	void* sp = sctx->st_bottom;
+	// size_t co_size = sizeof(Coroutine);
+	void* co_space = reinterpret_cast< void * >(
+			( reinterpret_cast< uintptr_t >( sp) - static_cast< uintptr_t >( sizeof( Coroutine) ) )
+            & ~static_cast< uintptr_t >( 0xff) );
+	// void* co_space = malloc(sizeof(Coroutine));
+	Coroutine* new_co = new (co_space)Coroutine{sctx, S->stack_pool, func, args, };
+	void * stack_top = reinterpret_cast< void * >(
+            reinterpret_cast< uintptr_t >( co_space) - static_cast< uintptr_t >( 128) );
+	const std::size_t size = reinterpret_cast< uintptr_t >(sp) - reinterpret_cast< uintptr_t >(sctx->st_top);
+	const fcontext_t ctx = make_fcontext(stack_top, size, &func_wrapper);
+	new_co->co_ctx_ = ctx;
+	new_co->status = READY;
+	// new_co->args_ = args;
+	int i;
+	for (i=0;i<S->coroutines.size();i++) {
+		int id = (i+S->nco) % S->coroutines.size();
+		if (S->coroutines[id] == NULL) {
+			S->coroutines[id] = new_co;
+			++S->nco;
+			return id;
 		}
 	}
-	return -1;
+	S->coroutines.push_back(new_co);
+	return S->coroutines.size() - 1;
 }
 
 void coroutine_resume(CoScheduler* S, int id)
 {
-    assert(S->running == -1);
-	assert(id >=0 && id < S->cap);
+    // assert(S->running == -1);
+	// assert(id >=0 && id < S->cap);
 
     // 取出协程
-	struct Coroutine *C = S->coroutines[id];
+	Coroutine *C = S->coroutines[id];
 	if (C == NULL)
 		return;
-
-	coroutine_status status = C->status;
-	#ifdef USE_BOOST_CONTEXT
 	transfer_t res_t;
-	void* temp_st;
-	#endif
-    uintptr_t ptr;
-	
+	coroutine_status status = C->status;
 	switch(status) {
-	case READY:
-		#ifdef USE_BOOST_CONTEXT
-		temp_st = malloc(1024 * 16);
-		// C->co_ctx = make_fcontext(C->st_mem->st_top, C->st_mem->size, func_wrapper);
-		C->co_ctx = make_fcontext(temp_st, 1024 * 16,  func_wrapper);
-		S->running = id;
-		C->status = RUNNING;
-		res_t = jump_fcontext(C->co_ctx, C);
-		C->co_ctx = res_t.fctx;
-		#else
-		getcontext(&C->context);
-		C->st_mem = S->stack_pool->get_stack(__MINIMUM_BLOCKSIZE * 2);
-		C->context.uc_stack.ss_sp = C->st_mem->st_top;
-		C->context.uc_stack.ss_size = __MINIMUM_BLOCKSIZE * 2;
-		C->context.uc_link = S->return_ctx;
-
-		S->running = id;
-		C->status = RUNNING;
-		// 设置执行C->ctx函数, 并将S作为参数传进去
-		ptr = (uintptr_t)S;
-		makecontext(&C->context, (void (*)(void)) func_wrapper, 2, (uint32_t)ptr, (uint32_t)(ptr>>32));
-		// 将当前的上下文放入S->main中，并将C->ctx的上下文替换到当前上下文
-		swapcontext(S->return_ctx, &C->context);
-		#endif
-		break;
 	case SUSPEND:
+	case RUNNING:
+	case READY:
 		S->running = id;
 		C->status = RUNNING;
-		#ifdef USE_BOOST_CONTEXT
-		res_t = jump_fcontext(C->co_ctx, C);
-		C->co_ctx = res_t.fctx;
-		#else
-		swapcontext(S->return_ctx, &C->context);
-		#endif
+		res_t = jump_fcontext(C->co_ctx_, C);
+		C->co_ctx_ = res_t.fctx;
 		break;
 	default:
 		assert(0);
 	}
-	if (C->status == RUNNING) C->status = SUSPEND;
+	if (C->status != ENDED) C->status = SUSPEND;
 	S->running = -1;
 }
 
-void coroutine_yield(CoScheduler* S)
+fcontext_t coroutine_yield(transfer_t t)
 {
-    int id = S->running;
-	assert(id >= 0);
-	// struct Coroutine * C = activate_co;
-	// if (C == nullptr)
-	// {
-	// 	return;
-	// }
-	struct Coroutine * C = S->coroutines[id];
-	// jump_data jmp_data = {S, nullptr};
-	C->status = SUSPEND;
-	S->running = -1;
-	#ifdef USE_BOOST_CONTEXT
-	// fcontext_t return_des = S->return_ctx[id];
-	transfer_t res_t = jump_fcontext(C->main_ctx, nullptr);
-	// S->return_ctx[id] = res_t.fctx;
-	#else
-	swapcontext(&C->context , &S->main_ctx);
-	#endif
+    // Coroutine* c = static_cast<Coroutine*>(t.data);
+	// assert(nullptr != t.fctx);
+	// assert(nullptr != c);
+	// c->status = SUSPEND;
+	return jump_fcontext(t.fctx, nullptr).fctx;
 }
 
 coroutine_status coroutine_check(CoScheduler* S, int id)

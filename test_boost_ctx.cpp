@@ -1,4 +1,5 @@
-#include <boost/context/all.hpp>
+// #include <boost/context/all.hpp>
+#include <boost/context/detail/fcontext.hpp>
 #include <iostream>
 
 using namespace boost::context::detail;
@@ -100,3 +101,33 @@ int main()
     std::cout << "main end" << std::endl;
     return 0;
 }
+
+// #include <iostream>
+// #include <boost/context/continuation.hpp>
+
+// boost::context::continuation&& foo(boost::context::continuation && from)
+// {
+//     std::cout << "enter foo" << std::endl;
+
+//     from = from.resume();
+
+//     std::cout << "leave foo" << std::endl;
+
+//     from = from.resume();
+//     return std::move(from);
+// }
+
+// int main()
+// {
+//     boost::context::continuation c = boost::context::callcc(foo);
+
+//     std::cout << "enter main" << std::endl;
+
+//     c = c.resume();
+
+//     std::cout << "leave main" << std::endl;
+
+//     c = c.resume();
+
+//     return 0;
+// }

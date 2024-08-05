@@ -8,11 +8,6 @@
 struct Coroutine;
 struct CoScheduler;
 
-#ifdef USE_BOOST_CONTEXT
-typedef fcontext_t CoroutineContext; 
-#else
-typedef ucontext_t CoroutineContext; 
-#endif
 
 
 enum {__MAX_COROUTINES=100000};
@@ -21,8 +16,8 @@ struct Stack
 {
     unsigned int size;
     Coroutine* bind_co;
-    char* st_top;
-    char* st_bottom;
+    void* st_top;
+    void* st_bottom;
 };
 
 class StackPool
@@ -36,9 +31,6 @@ public:
 protected:
     MemoryPool* memory_manager;
 };
-#ifdef USE_BOOST_CONTEXT
-static void func_wrapper(transfer_t t);
-#else
-static void func_wrapper(uint32_t low32, uint32_t hi32);
-#endif
+void func_wrapper(transfer_t t);
+
 #endif
