@@ -1,7 +1,6 @@
-#include "gcoroutine.h"
+#include "gcoroutine.hpp"
 #include "scheduler.hpp"
 #include "timewheel.h"
-#include "gcoroutine.h"
 #include <iostream>
 #include <chrono>
 // #define TIMEOUTPUT
@@ -95,33 +94,33 @@ main(int argc, char* argv[]) {
 	begin_time = end_time;
 	begin_clock = end_clock;
 	#endif
-  bool continue_flag = true;
+//   bool continue_flag = true;
   long long real_switch_times = static_cast<long long>(0);
-  while (continue_flag) {
-    continue_flag = false;
-    for (int i = 0; i < max_coroutine_number; ++i) {
-      if (S->coroutines[i]  && ENDED != S->coroutines[i]->status) {
+//   while (continue_flag) {
+//     continue_flag = false;
+//     for (int i = 0; i < max_coroutine_number; ++i) {
+//       if (S->coroutines[i]  && ENDED != S->coroutines[i]->status) {
 		
-		if (S->coroutines[i]->status == READY)
-		{
-			begin_time = time(nullptr);
-			begin_clock = CALC_CLOCK_NOW();
-		}
-        continue_flag = true;
-        ++real_switch_times;
-		S->coroutines[i]->resume();
-//         // coroutine_resume(S, i);
-      }
-	  if (S->coroutines[i]  && ENDED == S->coroutines[i]->status)
-	  {
-		S->coroutines[i]->close();
-		S->coroutines[i] = nullptr;
-	  }
-    }
-  }
+// 		if (S->coroutines[i]->status == READY)
+// 		{
+// 			begin_time = time(nullptr);
+// 			begin_clock = CALC_CLOCK_NOW();
+// 		}
+//         continue_flag = true;
+//         ++real_switch_times;
+// 		S->coroutines[i]->resume();
+// //         // coroutine_resume(S, i);
+//       }
+// 	  if (S->coroutines[i]  && ENDED == S->coroutines[i]->status)
+// 	  {
+// 		S->coroutines[i]->close();
+// 		S->coroutines[i] = nullptr;
+// 	  }
+//     }
+//   }
 	// 	begin_time = end_time;
 	// begin_clock = end_clock;
-	// real_switch_times = S->loop();
+	real_switch_times = S->loop();
   #ifdef TIMEOUTPUT
   end_time = time(nullptr);
   end_clock = CALC_CLOCK_NOW();
