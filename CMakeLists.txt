@@ -3,32 +3,68 @@ cmake_minimum_required(VERSION 3.10)
 project(glibco)
 set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_CXX_STANDARD 17)
-set (CMAKE_CXX_COMPILER "/usr/bin/g++")
+
+# set (CMAKE_CXX_COMPILER "/usr/bin/g++")
 # set(Boost_USE_STATIC_LIBS ON)
 # set(Boost_USE_STATIC_RUNTIME ON)
-set (BOOST_ROOT /home/ubuntu/install/lib/cmake)
-
+# set (BOOST_ROOT D:/dev/boost_1_74_0/build/lib/cmake)
+# set 
 find_package(Boost COMPONENTS context system REQUIRED)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include
 ${Boost_INCLUDE_DIRS})
 add_definitions(-DTIMEOUTPUT)
-add_executable(mytest 
-test.cpp 
-${CMAKE_CURRENT_SOURCE_DIR}/src/memorypool.cpp 
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/gcoroutine.cpp
-${CMAKE_CURRENT_SOURCE_DIR}/src/stackpool.cpp
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/scheduler.cpp
+add_executable(mytest_boost test_boost_ctx.cpp)
+target_link_libraries(
+    mytest_boost
+    Boost::context
+    Boost::system
 )
-# add_executable(mytest_boost test_boost_ctx.cpp)
-target_link_libraries(mytest
-/home/ubuntu/install/lib/libboost_context-mt-x64.so
-/home/ubuntu/install/lib/libboost_system-mt-x64.so
+file(
+    GLOB_RECURSE
+    SOURCE_LIST
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
 )
 
+add_library(colib_static STATIC ${SOURCE_LIST})
+add_library(colib_shared SHARED ${SOURCE_LIST})
+target_link_libraries(colib_static
+Boost::context
+Boost::system)
+target_link_libraries(colib_shared
+Boost::context
+Boost::system)
+set_target_properties(colib_static PROPERTIES OUTPUT_NAME colib)
+set_target_properties(colib_shared PROPERTIES OUTPUT_NAME colib)
+add_executable(mytest 
+test.cpp 
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/memorypool.cpp 
+# # ${CMAKE_CURRENT_SOURCE_DIR}/src/gcoroutine.cpp
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/stackpool.cpp
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/timewheel.cpp
+# ${CMAKE_CURRENT_SOURCE_DIR}/src/scheduler.cpp
+)
+
+target_link_libraries(mytest
+colib_static
+)
+# add_executable(test_hook
+# ${CMAKE_CURRENT_SOURCE_DIR}/test_hook.cpp)
+# add_library(colib_static STATIC ${CMAKE_CURRENT_SOURCE_DIR}/sharedhook.cpp)
+# add_library(colib_shared SHARED ${CMAKE_CURRENT_SOURCE_DIR}/sharedhook.cpp)
+# set_target_properties(colib_static PROPERTIES OUTPUT_NAME colib)
+# set_target_properties(colib_shared PROPERTIES OUTPUT_NAME colib)
+
+# set_target_properties(colib_static PROPERTIES CLEAN_DIRECT_OUTPUT 1)
+# set_target_properties(colib_shared PROPERTIES CLEAN_DIRECT_OUTPUT 1)
+# target_link_libraries(test_hook ${CMAKE_CURRENT_SOURCE_DIR}/build/libcolib.so dl capstone)
 # target_link_libraries(mytest_boost
 # ${Boost_LIBRARIES}
 # )
 # add_compile_options(-fno-elide-constructors)  
 # set(CMAKE_CXX_FLAGS "-O3 -g -DNDEBUG -ggdb -Wall -fPIC")
-
+set(BUILD_TESTING true)
 message(STATUS "CMAKE_CXX_FLAGS = ${CMAKE_CXX_FLAGS}")
+if (BUILD_TESTING)
+    set(TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    add_subdirectory(test)
+endif()

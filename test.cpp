@@ -1,8 +1,10 @@
 #include "gcoroutine.h"
-#include "scheduler.h"
+#include "scheduler.hpp"
+#include "timewheel.h"
 #include "gcoroutine.h"
 #include <iostream>
 #include <chrono>
+// #define TIMEOUTPUT
 using fn_type = void(*)(Coroutine*);
 #define CALC_CLOCK_T std::chrono::system_clock::time_point
 #define CALC_CLOCK_NOW() std::chrono::system_clock::now()
@@ -14,13 +16,25 @@ struct args {
 	int n;
 };
 
-static void
+// int foo_1()
+// {
+// 	int a = 0;
+// 	int b = 0;
+// 	printf("s");
+// 	a = a+b;
+// 	return a;
+// }
+
+void
 foo(Coroutine* c) {
 	// int start = *reinterpret_cast<int*>(ud);
 	int start = 0;
-	int i;
-	for (i=0;i<5;i++) {
-		// std::cout << "coroutine "<< " " << start + i << std::endl;
+	srand(time(0));
+	int s = rand() % 10;
+	int * a = &start;
+	// int * b = &i;
+	for (int i=0;i<s;i++) {
+		// foo_1();
 		// this_co->status = SUSPEND;
 		// t.fctx = coroutine_yield(t);
 		c->yield();
@@ -50,14 +64,19 @@ foo(Coroutine* c) {
 // }
 
 int 
-main() {
+main(int argc, char* argv[]) {
 	// 创建一个协程调度器
-	CoScheduler<Coroutine, StackPool>* S = &CoScheduler<Coroutine, StackPool>::open(); 
+	CoScheduler<Coroutine,StackPool>* S = &CoScheduler<Coroutine, StackPool>::open(); 
 	#ifdef TIMEOUTPUT
 	time_t begin_time = time(nullptr);
 	CALC_CLOCK_T begin_clock = CALC_CLOCK_NOW();
 	#endif
-	int max_coroutine_number = 10000;
+	int num_co = 30;
+	if (argc > 1)
+	{
+		num_co = std::stoi(argv[1]);
+	}
+	int max_coroutine_number = num_co;
 	int id = 0;
 	for (int i = 0; i < max_coroutine_number; ++i) {
 		// int p = {i};
@@ -81,20 +100,28 @@ main() {
   while (continue_flag) {
     continue_flag = false;
     for (int i = 0; i < max_coroutine_number; ++i) {
-      if (S->coroutines[i] && ENDED != S->coroutines[i]->status) {
+      if (S->coroutines[i]  && ENDED != S->coroutines[i]->status) {
 		
-		// if (S->coroutines[i]->status == READY)
-		// {
-		// 	begin_time = time(nullptr);
-		// 	begin_clock = CALC_CLOCK_NOW();
-		// }
+		if (S->coroutines[i]->status == READY)
+		{
+			begin_time = time(nullptr);
+			begin_clock = CALC_CLOCK_NOW();
+		}
         continue_flag = true;
         ++real_switch_times;
 		S->coroutines[i]->resume();
-        // coroutine_resume(S, i);
+//         // coroutine_resume(S, i);
       }
+	  if (S->coroutines[i]  && ENDED == S->coroutines[i]->status)
+	  {
+		S->coroutines[i]->close();
+		S->coroutines[i] = nullptr;
+	  }
     }
   }
+	// 	begin_time = end_time;
+	// begin_clock = end_clock;
+	// real_switch_times = S->loop();
   #ifdef TIMEOUTPUT
   end_time = time(nullptr);
   end_clock = CALC_CLOCK_NOW();

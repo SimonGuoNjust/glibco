@@ -1,7 +1,9 @@
 #ifndef __GCO_ROUTINE_H__
 #define __GCO_ROUTINE_H__
 #include <boost/context/detail/fcontext.hpp>
-#include <../include/stackpool.h>
+#include <boost/context/continuation_fcontext.hpp>
+#include <boost/context/fixedsize_stack.hpp>
+#include <../include/stackpool.hpp>
 #include <stdio.h>
 #include <stdlib.h>
 using namespace boost::context::detail;
@@ -104,18 +106,22 @@ void func_wrapper(transfer_t t)
 template<typename Fn, typename StackPool>
 Coroutine* coroutine_new(StackPool* S, Fn&& func, void* args)
 {
-	Stack* sctx = S->get_stack(__MINIMUM_BLOCKSIZE);
-	void* sp = sctx->st_bottom;
-	// size_t co_size = sizeof(Coroutine);
+	Stack* sctx = S->get_stack();
+	void* sp = sctx->sp;
+	// void* sp = reinterpret_cast< void * >(
+	// 		( reinterpret_cast< uintptr_t >( malloc(__MINIMUM_BLOCKSIZE)) + static_cast< uintptr_t >( __MINIMUM_BLOCKSIZE )));;
+	// size_t re_size = sizeof(record<boost::context::continuation, boost::context::default_stack, Fn>);
 	void* co_space = reinterpret_cast< void * >(
-			( reinterpret_cast< uintptr_t >( sp) - static_cast< uintptr_t >( sizeof( Coroutine) ) )
+			( reinterpret_cast< uintptr_t >( sp) - static_cast< uintptr_t >( sizeof(Coroutine) ))
             & ~static_cast< uintptr_t >( 0xff) );
-	// void* co_space = malloc(sizeof(Coroutine));
+	// // void* co_space = malloc(sizeof(Coroutine));
 	Coroutine* new_co = new (co_space)Coroutine{sctx, S, func, args, };
-	void * stack_top = reinterpret_cast< void * >(
-            reinterpret_cast< uintptr_t >( co_space) - static_cast< uintptr_t >( 128) );
-	const std::size_t size = reinterpret_cast< uintptr_t >(sp) - reinterpret_cast< uintptr_t >(sctx->st_top);
-	const fcontext_t ctx = make_fcontext(stack_top, size, &func_wrapper);
+	// Coroutine* new_co = new Coroutine{sctx, S, func, args};
+	void * stack_bottom = reinterpret_cast< void * >(reinterpret_cast< uintptr_t >( co_space) - static_cast< uintptr_t >(64) );
+	void * stack_top = reinterpret_cast< void * >(reinterpret_cast< uintptr_t >( sp) - static_cast< uintptr_t >( __MINIMUM_BLOCKSIZE ) );
+	const std::size_t size = reinterpret_cast< uintptr_t >(stack_bottom) - reinterpret_cast< uintptr_t >(stack_top);
+	const fcontext_t ctx = make_fcontext(stack_bottom, size, &func_wrapper);
+
 	new_co->co_ctx_ = ctx;
 	new_co->status = READY;
 	// new_co->args_ = args;
