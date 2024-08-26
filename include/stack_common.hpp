@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 enum {__DEFAULT_POOLSIZE = 128};
-enum {__MINIMUM_BLOCKSIZE = 1024 * 8};
+enum {__MINIMUM_BLOCKSIZE = 1024 * 16};
 
 class OutofMemory: public std::runtime_error
 {

@@ -37,12 +37,14 @@ foo(Coroutine* c) {
 		// foo_1();
 		// this_co->status = SUSPEND;
 		// t.fctx = coroutine_yield(t);
+		// printf("%d : %d\n", i, s);
+		 vfprintf_s(stdout, "a", nullptr);
 		c->yield();
-		printf("a");
 		// co->main_ctx = t.fctx;
 		// coroutine_yield();
 	}
-	// std::cout << "foo ended" << std::endl;
+
+	std::cout << "foo ended" << std::endl;
 }
 
 
@@ -143,6 +145,5 @@ main(int argc, char* argv[]) {
   	}
 	S.start();
 	S.run();
-	
 	return 0;
 }

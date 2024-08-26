@@ -48,7 +48,7 @@ public:
         {
             if (is_from(st_top, static_cast<char*>(blocks_[blockInd]), 32 * stack_size_))
             {
-                uint32_t chunkInd = static_cast<uint32_t>((reinterpret_cast< uintptr_t >(stack -> sp) - reinterpret_cast< uintptr_t >(blocks_[blockInd]) - stack->size) %
+                uint32_t chunkInd = static_cast<uint32_t>((reinterpret_cast< char* >(stack -> sp) - reinterpret_cast< char* >(blocks_[blockInd]) - stack->size) %
                 (32 * stack_size_));
                 free_chunk(blockInd, chunkInd);
                 break;
@@ -87,8 +87,8 @@ private:
 
         for (int i = 0; i < num_blocks; i++)
         {
-            blocks_.push_back(reinterpret_cast<void*>(reinterpret_cast< uintptr_t >(mem) + 
-        static_cast< uintptr_t> (i * stack_size_ * 32)));
+            blocks_.push_back(reinterpret_cast<void*>(reinterpret_cast< char* >(mem) + 
+        (i * stack_size_ * 32)));
             alloc_bitmap_.push_back(0); 
         }
     }
@@ -120,8 +120,8 @@ private:
 
     inline void* get_chunk(uint32_t blockInd, uint32_t chunkInd)
     {
-        return reinterpret_cast<void*>(reinterpret_cast< uintptr_t >(blocks_[blockInd]) + 
-        static_cast< uintptr_t> (chunkInd * stack_size_)); 
+        return reinterpret_cast<void*>(reinterpret_cast< char* >(blocks_[blockInd]) + 
+        chunkInd * stack_size_); 
     }
 
     Stack* bind_chunk()

@@ -4,7 +4,11 @@
 #ifdef __BITMAP_STACKPOOL
 #include "bitmap_stackpool.hpp"
 #else
+#ifdef __SIMPLE_STACKPOOL
+#include "simple_stackpool.hpp"
+#else
 #include "linker_stackpool.hpp"
+#endif
 #endif
 
 #include "stack_common.hpp"
@@ -15,7 +19,11 @@ public:
     #ifdef __BITMAP_STACKPOOL
     typedef bitmap_stackpool pool_impl_type;
     #else
+    #ifdef __SIMPLE_STACKPOOL
+    typedef simple_stackpool pool_impl_type;
+    #else
     typedef linker_stackpool pool_impl_type;
+    #endif
     #endif
 
     Stack* get_stack()

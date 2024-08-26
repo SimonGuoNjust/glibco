@@ -128,7 +128,7 @@ public:
                 // th_infos->func[id](nullptr);
                 std::lock_guard<std::mutex> lock(th_infos->mutex_task);
                 th_infos->unset(id, isSuspend);
-                printf("%d \n", thInfos.checkStatus(id, isSuspend));
+                // printf("%d \n", thInfos.checkStatus(id, isSuspend));
             }
         }
     }
@@ -256,11 +256,8 @@ public:
     void close()
     {
         th_pool_.release();
-        for (auto& c : co_pool_)
-        {
-            c.close();
-        }
     }
+
     ~ThreadPoolCoScheduler()
     {
         this->close();

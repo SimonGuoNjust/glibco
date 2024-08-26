@@ -85,7 +85,10 @@ public:
             CoroutineLink* p = q -> head;
             while(p)
             {
+                PopHead<CoroutineLink, coroutine_queue>(coroutines+i);
                 p -> self -> close();
+                p -> self = nullptr;
+                free(p);
                 p = q -> head;
             }
         };
@@ -139,6 +142,7 @@ public:
         memset(&co_task, 0, sizeof(co_task));
         co_task.self = c;
         AddTail(coroutines, &co_task);
+        nco++;
     }
 
     static void global_run(void* objectPtr)
@@ -203,7 +207,7 @@ public:
             p -> self -> resume();
             if (p -> self ->status == 3)
             {
-                RemoveFromLink<CoroutineLink, coroutine_queue>(p);
+                // RemoveFromLink<CoroutineLink, coroutine_queue>(p);
                 p -> self ->close();
                 p -> self = nullptr;
                 nco--;
