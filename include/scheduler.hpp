@@ -16,23 +16,8 @@ class CoScheduler
 {
     class CoroutineLink;
     typedef TaskLink<CoroutineLink> coroutine_queue;
+    typedef std::shared_ptr<MemoryManager> MemoryManagerPtr;
 private:
-    CoScheduler():
-    nco(0),
-    cap(10000),
-    running(-1),
-    stack_pool(new MemoryManager()),
-    pTimeout(new TimerManager(60000)),
-    timeout(1)
-    {
-        coroutines = (coroutine_queue*)calloc(1, sizeof(coroutine_queue) * 3);
-    }
-
-    ~CoScheduler()
-    {
-        this->close();
-    }
-
     class CoroutineLink
     {
 
@@ -55,12 +40,27 @@ private:
     };
 
 public:
-    
-    static CoScheduler& open()
+    CoScheduler():
+    nco(0),
+    running(-1),
+    stack_pool(&MemoryManager::getInstance()),
+    pTimeout(new TimerManager(60000)),
+    timeout(1)
     {
-        static CoScheduler S;
-        return S;
+        coroutines = (coroutine_queue*)calloc(1, sizeof(coroutine_queue) * 3);
     }
+
+    ~CoScheduler()
+    {
+        this->close();
+    }
+    
+
+    // static CoScheduler& open()
+    // {
+    //     static CoScheduler S;
+    //     return S;
+    // }
 
     // void close()
     // {
@@ -90,7 +90,7 @@ public:
             }
         };
         free(coroutines);
-        delete this->stack_pool;
+        // delete this->stack_pool;
         delete this->pTimeout;
         this->stack_pool = nullptr;
         this->pTimeout = nullptr;
@@ -141,6 +141,12 @@ public:
         AddTail(coroutines, &co_task);
     }
 
+    static void global_run(void* objectPtr)
+    {
+        CoScheduler* this_ = reinterpret_cast<CoScheduler*> (objectPtr);
+        std::invoke(&CoScheduler::run, this_);
+    }
+
     // long long loop()
     // {
     //     TimerTaskLink timeout_list;
@@ -188,6 +194,40 @@ public:
     //     return switches;
 
     // }
+    int run_one()
+    {
+        CoroutineLink* p = coroutines -> head;
+        if (p)
+        {
+            PopHead<CoroutineLink, coroutine_queue>(coroutines);
+            p -> self -> resume();
+            if (p -> self ->status == 3)
+            {
+                RemoveFromLink<CoroutineLink, coroutine_queue>(p);
+                p -> self ->close();
+                p -> self = nullptr;
+                nco--;
+                free(p);
+                return 1;
+            }
+            else
+            {
+                AddTail(coroutines, p);
+                return 0;
+            }
+        }
+        return -1;
+        
+    }
+
+    void run()
+    {
+        for(;;)
+        {
+            run_one();
+            if (nco <= 0) break;
+        }
+    }
 
     long long loop()
     {
@@ -221,16 +261,17 @@ public:
         return switches;
 
     }
-    CoScheduler(const CoScheduler&) = delete;
-    CoScheduler& operator=(const CoScheduler&) = delete;
+    // CoScheduler(const CoScheduler&) = delete;
+    // CoScheduler& operator=(const CoScheduler&) = delete;
+    // MemoryManager* stack_pool;
     MemoryManager* stack_pool;
     // std::vector<CoroutineType*> coroutines;
     coroutine_queue* coroutines;
     TimerManager* pTimeout;
     int nco;
-    int cap;
     int running;
     int timeout;
+    bool sharedManager;
 };
 
 

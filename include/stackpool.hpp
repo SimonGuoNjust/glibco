@@ -17,11 +17,6 @@ public:
     #else
     typedef linker_stackpool pool_impl_type;
     #endif
-    StackPool():
-        pool_impl_(*(new pool_impl_type())) {}
-
-    StackPool(int stack_size): pool_impl_(*(new pool_impl_type(
-        stack_size))) {}
 
     Stack* get_stack()
     {
@@ -38,7 +33,18 @@ public:
         delete &pool_impl_;
     }
 
+    static StackPool& getInstance()
+    {
+        static StackPool sp;
+        return sp;
+    }
+
 private:
+    StackPool():
+    pool_impl_(*(new pool_impl_type())) {}
+
+    StackPool(int stack_size): pool_impl_(*(new pool_impl_type(
+        stack_size))) {}
     pool_impl_type& pool_impl_;
 };
 
