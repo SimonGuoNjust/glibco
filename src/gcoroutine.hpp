@@ -3,9 +3,11 @@
 #include <boost/context/detail/fcontext.hpp>
 #include <boost/context/continuation_fcontext.hpp>
 #include <boost/context/fixedsize_stack.hpp>
-#include <../include/stackpool.hpp>
+
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "stackpool.hpp"
 using namespace boost::context::detail;
 
 typedef void(*fn_coroutine)(class Coroutine*);
@@ -19,6 +21,7 @@ enum coroutine_status {
     READY = 0,
     RUNNING,
     SUSPEND,
+	WAITING,
     ENDED,
     EXITED
 };
@@ -49,7 +52,7 @@ public:
     fcontext_t run();
     void close();
     void resume();
-    fcontext_t yield();
+    fcontext_t yield(coroutine_status st = SUSPEND);
     
 };
 template<typename Fn, typename StackPool>
@@ -134,9 +137,9 @@ void Coroutine::resume()
 	co_ctx_ = jump_fcontext(co_ctx_, this).fctx;
 }
 
-fcontext_t Coroutine::yield()
+fcontext_t Coroutine::yield(coroutine_status st)
 {
-	status = SUSPEND;
+	status = st;
 	main_ctx_ = jump_fcontext(main_ctx_, nullptr).fctx;
 }
 

@@ -3,14 +3,12 @@ cmake_minimum_required(VERSION 3.10)
 project(glibco)
 set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_CXX_STANDARD 17)
-
 # set (CMAKE_CXX_COMPILER "/usr/bin/g++")
-# set(Boost_USE_STATIC_LIBS ON)
-# set(Boost_USE_STATIC_RUNTIME ON)
-# set (BOOST_ROOT D:/dev/boost_1_74_0/build/lib/cmake)
-# set 
+
+set (BOOST_ROOT D:/dev/boost_1_74_0/build/lib/cmake)
+
 find_package(Boost COMPONENTS context system REQUIRED)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src
 ${Boost_INCLUDE_DIRS})
 add_definitions(-DTIMEOUTPUT)
 add_executable(mytest_boost test_boost_ctx.cpp)
@@ -22,26 +20,25 @@ target_link_libraries(
 file(
     GLOB_RECURSE
     SOURCE_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
 )
 
 add_library(colib_static STATIC ${SOURCE_LIST})
 add_library(colib_shared SHARED ${SOURCE_LIST})
+
 target_link_libraries(colib_static
 Boost::context
 Boost::system)
+
 target_link_libraries(colib_shared
 Boost::context
 Boost::system)
+
 set_target_properties(colib_static PROPERTIES OUTPUT_NAME colib)
 set_target_properties(colib_shared PROPERTIES OUTPUT_NAME colib)
+
 add_executable(mytest 
 test.cpp 
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/memorypool.cpp 
-# # ${CMAKE_CURRENT_SOURCE_DIR}/src/gcoroutine.cpp
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/stackpool.cpp
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/timewheel.cpp
-# ${CMAKE_CURRENT_SOURCE_DIR}/src/scheduler.cpp
 )
 
 target_link_libraries(mytest

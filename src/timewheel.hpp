@@ -16,7 +16,7 @@ struct TimerTask;
 typedef TaskLink<TimerTask> TimerTaskLink;
 class Coroutine;
 typedef void (*OnPreparePfn_t)( TimerTask *,struct epoll_event &ev, TimerTaskLink *active );
-typedef void (*OnProcessPfn_t)( Coroutine *);
+typedef void (*OnProcessPfn_t)(void*);
 unsigned long long GetTickMS();
 
 struct TimerTask
@@ -39,18 +39,23 @@ struct TimerTask
 	void *pArg; // self routine pArg 是pfnPrepare和pfnProcess的参数
 
 	bool bTimeout; // 是否已经超时
-	int co_id;
 };
-
-
 
 class TimeWheel
 {
 public:
-	TimeWheel(int cap);
+
+	TimeWheel(int cap)
+    {
+        iItemSize = cap;
+        pItems = (TimerTaskLink*)calloc( 1, sizeof(TimerTaskLink) * iItemSize );
+        start_ = GetTickMS();
+        startIdx_ = 0;
+    }
     ~TimeWheel();
     int addTask(unsigned long long now, TimerTask* task);
 	void getAllTimeout(unsigned long long now, TimerTaskLink* result);
+    void do_timeout(TimerTask* task);
 
 private:
     TimerTaskLink* pItems;
@@ -89,15 +94,6 @@ unsigned long long GetTickMS()
 	u *= 1000;
 	u += now.tv_usec / 1000;
 	return u;
-}
-
-TimeWheel::TimeWheel(int cap)
-{	
-    iItemSize = cap;
-    pItems = (TimerTaskLink*)calloc( 1, sizeof(TimerTaskLink) * iItemSize );
-
-    start_ = GetTickMS();
-    startIdx_ = 0;
 }
 
 TimeWheel::~TimeWheel()
@@ -183,5 +179,11 @@ void TimeWheel::getAllTimeout(unsigned long long now, TimerTaskLink* result)
     start_ = now;
     startIdx_ += cnt - 1;
 }
+
+void TimeWheel::do_timeout(TimerTask* task)
+{
+    task -> pfnProcess(task->pArg);
+}
+
 
 #endif

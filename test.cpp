@@ -1,6 +1,5 @@
 #include "gcoroutine.hpp"
 #include "scheduler.hpp"
-#include "timewheel.h"
 #include "multithread_scheduler.hpp"
 #include <iostream>
 #include <chrono>
@@ -39,7 +38,8 @@ foo(Coroutine* c) {
 		// t.fctx = coroutine_yield(t);
 		// printf("%d : %d\n", i, s);
 		 vfprintf_s(stdout, "a", nullptr);
-		c->yield();
+		register_timeout<gCoScheduler>(20);
+		// c->yield();
 		// co->main_ctx = t.fctx;
 		// coroutine_yield();
 	}
