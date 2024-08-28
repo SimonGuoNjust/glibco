@@ -36,10 +36,7 @@ The implementation of the `glibco` module is organized into several key code fil
   - `multithread_scheduler.hpp`: Integrates coroutine management.
   - `scheduler.hpp`: Manages scheduling tasks with dependencies on `TimeWheel` and `MemoryManager`.
   - `hook.h`: Provides dynamic linking and memory protection utilities.
-
-- **Submodules**:
-  - **include**: Contains header files for various functionalities:
-
+  - 
 ## Acknowledgement
 This module utilizes the following third-party libraries:
 
