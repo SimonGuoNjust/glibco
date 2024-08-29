@@ -6,14 +6,18 @@
 #include <string.h>
 #include <assert.h>
 #include <vector>
+#include <unordered_map>
 #include <thread>
 #include <iostream>
 #include <atomic>
 #include <functional>
 #include <condition_variable>
 #include "scheduler.hpp"
-
+#define __DEFAULT_THREADS 6
 typedef void(*fn_thread_task)(void*);
+typedef std::thread::id thread_id;
+
+#define IS_THREAD_NULL(th) th==thread_id()
 
 class spin_mutex {
 	std::atomic<bool> flag = ATOMIC_VAR_INIT(false);
@@ -38,7 +42,7 @@ enum ThreadStatus{
     isSleep = 1, 
     // thread running(set) or wait(unset)
     isRunning = 2, 
-     // has task(set) or not(unset)
+    // has task(set) or not(unset)
     isSuspend = 4,
 };
 
@@ -54,7 +58,7 @@ public:
     ThreadInfo(int num_threads)
     {
         func = nullptr;
-        thread_status.resize(num_threads, isSuspend);
+        thread_status.resize(num_threads, 0);
         args.resize(num_threads, nullptr);
     }
     
@@ -76,9 +80,17 @@ public:
 };
 
 public:
-    ThreadPool(): num_threads(6), thInfos(6) {}
+    ThreadPool(): num_threads(__DEFAULT_THREADS), thInfos(__DEFAULT_THREADS) {}
     ThreadPool(int num_th): num_threads(num_th), thInfos(num_th) {}
     void initPool()
+    {
+        for (int i = 0; i < num_threads; i++)
+        {
+            pool_.emplace_back(std::bind(&ThreadPool::run, this, i));
+        }
+    }
+
+    void initPool(int num_threads)
     {
         for (int i = 0; i < num_threads; i++)
         {
@@ -133,28 +145,42 @@ public:
         }
     }
    
-    void add_task(void* args)
+    thread_id add_task(void* args)
     {
+        thread_id id;
         for (int i = 0; i < num_threads; i++)
         {
-            if (add_task(i, args))
+            id = add_task(i, args);
+            if (!(IS_THREAD_NULL(id)))
             {
                 break;
             }
         }
+        return id;
     }
 
-    bool add_task(int id, void* args)
+    void start()
     {
-        if (!thInfos.checkStatus(id, isRunning))
+        for (int id = 0; id < num_threads; id++)
+        {
+            if (thInfos.checkStatus(id, isSuspend))
+            {
+                thInfos.set(id, isRunning);
+            }
+        }
+        thInfos.cond.notify_all();
+    }
+
+    thread_id add_task(int id, void* args)
+    {
+        if (!thInfos.checkStatus(id, isSuspend))
         {
             thInfos.args[id] = args;
             thInfos.set(id, isSleep);
-            thInfos.set(id, isRunning);
-            thInfos.cond.notify_all();
-            return true;
+            thInfos.set(id, isSuspend);
+            return pool_[id].get_id();
         }
-        return false; 
+        return thread_id();
     }
 
     template<typename Fn>
@@ -205,6 +231,12 @@ public:
         }
     }
 
+    inline int pool_size() const
+    {
+        return num_threads;
+    }
+
+
 private:
     int num_threads;
     bool running = true;
@@ -217,11 +249,21 @@ typename MemoryManager>
 class ThreadPoolCoScheduler
 {
     typedef std::shared_ptr<MemoryManager> MemoryManagerPtr;
+    typedef CoScheduler<CoroutineType, MemoryManager> CoSchedulerType;
+    typedef std::shared_ptr<CoSchedulerType> CoSchedulerTypePtr;
+    typedef std::unordered_map<thread_id, CoSchedulerTypePtr> CoSchedulerRecord;
+
 private:
-    ThreadPoolCoScheduler() : num_threads(6), mStop(false) {}
-    ThreadPoolCoScheduler(int num_th) : num_threads(num_th), mStop(false) {}
+    ThreadPoolCoScheduler() : mStop(false) {
+        num_threads = __DEFAULT_THREADS;
+    }
+
+    ThreadPoolCoScheduler(int num_th) : th_pool_(num_th), mStop(false) {
+        num_threads = num_th;
+    }
 
 public:
+
     static ThreadPoolCoScheduler& open()
     {
         static ThreadPoolCoScheduler sch;
@@ -232,31 +274,58 @@ public:
     int new_coroutine(Fn&& fn, void* args)
     {
         std::lock_guard<std::mutex> lock(co_pool_lock);
-        co_pool_[next_th_idx].new_coroutine(fn, args);
-        next_th_idx = (next_th_idx + 1) % num_threads;
+        CoSchedulerTypePtr choosen_sch = (*(next_th_idx)).second;
+        choosen_sch->new_coroutine(fn, args);
+        if (++next_th_idx == co_pools_.end()) next_th_idx = co_pools_.begin();
     }
 
-    void init()
+    bool add_coroutine_timeout(size_t tm)
     {
-        co_pool_.reserve(num_threads);
-        for (int i = 0; i < num_threads; i++)
+        auto id = std::this_thread::get_id();
+        std::unique_lock<std::mutex> lock(co_pool_lock);
+        auto iter_ = co_pools_.find(id);
+        if (iter_ == co_pools_.end()) return false;
+        lock.unlock();
+        (*iter_).second->add_coroutine_timeout(coroutine_timeout_func, tm);
+        return true;
+    }
+
+    CoSchedulerTypePtr get_this_thread_copool()
+    {
+        std::lock_guard<std::mutex> lock(co_pool_lock);
+        thread_id id = std::this_thread::get_id();
+        if (co_pools_.find(id) != co_pools_.end())
         {
-            co_pool_.emplace_back();
+            return co_pools_[id];
         }
+        return nullptr;
+        
+    }
+
+    static void coroutine_timeout_func(void* args)
+    {
+        ThreadPoolCoScheduler& sch = ThreadPoolCoScheduler::open();
+        CoSchedulerTypePtr co_sch = sch.get_this_thread_copool();
+        co_sch->wake_coroutine(args);
     }
 
     void start()
     {
         th_pool_.initPool();
-        th_pool_.configure_task(&CoScheduler<CoroutineType, MemoryManager>::global_run);
+        th_pool_.configure_task(&CoSchedulerType::global_run);
+        std::lock_guard<std::mutex> lock(co_pool_lock);
         for (int i = 0; i < num_threads; i++)
         {
-            th_pool_.add_task(&(co_pool_[i]));
+            CoSchedulerTypePtr sch = std::make_shared<CoSchedulerType>();
+            thread_id id = th_pool_.add_task(reinterpret_cast<void*>(sch.get()));
+            co_pools_.insert(std::make_pair(id, sch));
         }
+        next_th_idx = co_pools_.begin();
     }
 
     void run()
     {
+        th_pool_.start();
         th_pool_.wait();
     }
 
@@ -265,18 +334,30 @@ public:
         th_pool_.release();
     }
 
-    ~ThreadPoolCoScheduler()
-    {
-        this->close();
-    }
+    // ~ThreadPoolCoScheduler()
+    // {
+    //     this->close();
+    // }
+
 
 private:
     int num_threads;
     ThreadPool th_pool_;
-    std::vector<CoScheduler<CoroutineType, MemoryManager>> co_pool_;
+    // std::vector<CoScheduler<CoroutineType, MemoryManager>> co_pool_;
+
     std::mutex co_pool_lock;
-    int next_th_idx = 0;
+    typename CoSchedulerRecord::iterator next_th_idx = co_pools_.begin();
     bool mStop;
+
+public:
+    CoSchedulerRecord co_pools_;
 };
+
+template <class Scheduler>
+bool register_timeout(size_t timeout)
+{
+    Scheduler& sch = Scheduler::open();
+    return sch.add_coroutine_timeout(timeout);
+}
 
 #endif

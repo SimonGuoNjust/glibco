@@ -2,9 +2,7 @@
 #define __SCHEDULER_H
 #include <thread>
 #include "timewheel.hpp"
-#include <map>
 
-std::map<std::thread::id, void*> scheduler_store;
 
 typedef TimeWheel TimerManager;
 
@@ -19,8 +17,6 @@ class CoScheduler
     class CoroutineLink;
     typedef TaskLink<CoroutineLink> coroutine_queue;
     typedef std::shared_ptr<MemoryManager> MemoryManagerPtr;
-    friend class ThreadPoolCoScheduler<CoroutineType, MemoryManager>;
-    friend class std::vector<CoScheduler<CoroutineType, MemoryManager>>;
 private:
 
     class CoroutineLink
@@ -105,14 +101,14 @@ public:
     }
 
     template<typename Fn>
-    void add_timeout(Fn&& fn, void* args, size_t timeout_)
+    void add_timeout(Fn&& fn, void* args, int timeout)
     {
         TimerTask& tm = *((TimerTask*)malloc(sizeof(TimerTask)));
         memset(&tm, 0 , sizeof(tm));
         tm.pfnProcess = fn;
         tm.pArg = args;
         unsigned long long now = GetTickMS();
-        tm.ullExpireTime = now + timeout_;
+        tm.ullExpireTime = now + timeout;
         int ret = pTimeout -> addTask(now, &tm);
         if (ret < 0)
         {
@@ -121,24 +117,36 @@ public:
         }
     }
 
-    static void process_coroutine_timeout(void* co_link)
+    void wake_coroutine(CoroutineLink* p)
     {
-        CoScheduler* sch = reinterpret_cast<CoScheduler*>(scheduler_store[std::this_thread::get_id()]);
-        AddTail(sch->coroutines, reinterpret_cast<CoroutineLink*>(co_link));
+        if (p -> pLink == coroutines + 1)
+        {
+            RemoveFromLink<CoroutineLink, coroutine_queue>(p);
+        }
+        else
+        {
+            return;
+        }
+        AddTail(coroutines, p);
     }
 
-    void add_coroutine_timeout(size_t timeout_)
+    void wake_coroutine(void* p_)
     {
-        add_timeout(process_coroutine_timeout, running, timeout_);
+        CoroutineLink* p = reinterpret_cast<CoroutineLink*>(p_);
+        wake_coroutine(p);
+    }
+
+    template <typename Fn>
+    void add_coroutine_timeout(Fn&& fn, size_t timeout_)
+    {
+        add_timeout(std::forward<Fn>(fn), running, timeout_);
         running->self -> yield(WAITING);
     }
 
     static void global_run(void* objectPtr)
     {
         CoScheduler* this_ = reinterpret_cast<CoScheduler*> (objectPtr);
-        auto pid = std::this_thread::get_id();
-        if (scheduler_store.find(pid)==scheduler_store.end()) scheduler_store.emplace(pid, objectPtr);
-        std::invoke(&CoScheduler::run, this_);
+        this_->run();
     }
 
     int run_one()
@@ -158,12 +166,16 @@ public:
                 free(p);
                 return 1;
             }
-            else if (p -> self ->status != WAITING)
+            else if (p -> self ->status == WAITING)
+            {
+                AddTail(coroutines + 1, p);
+                return 0;
+            }
+            else
             {
                 AddTail(coroutines, p);
                 return 0;
             }
-            
         }
         return -1;    
     }
@@ -199,6 +211,7 @@ public:
         for(;;)
         {
             process_timeout();
+            // if (run_one() == -1) break;
             run_one();
             if (nco <= 0) break;
         }
@@ -243,13 +256,5 @@ public:
     CoroutineLink* running;
     int timeout;
 };
-
-template<class SchedulerType>
-void register_timeout(size_t timeout)
-{
-    auto pid = std::this_thread::get_id();
-    SchedulerType* sch = reinterpret_cast<SchedulerType*>(scheduler_store[pid]);
-    sch -> add_coroutine_timeout(timeout);
-}
 
 #endif

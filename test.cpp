@@ -1,5 +1,6 @@
 #include "glibco_all.hpp"
 #include <iostream>
+#include <random>
 #include <chrono>
 // #define TIMEOUTPUT
 using fn_type = void(*)(Coroutine*);
@@ -12,7 +13,7 @@ using fn_type = void(*)(Coroutine*);
 struct args {
 	int n;
 };
-
+std::mutex output;
 // int foo_1()
 // {
 // 	int a = 0;
@@ -26,8 +27,10 @@ void
 foo(Coroutine* c) {
 	// int start = *reinterpret_cast<int*>(ud);
 	int start = 0;
-	srand(time(0));
-	int s = rand() % 10;
+	srand(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+	// std::mt19937 generator;
+	// std::uniform_int_distribution<int> distribution(1, 10);
+	int s = rand() % 10 + 2;
 	int * a = &start;
 	// int * b = &i;
 	for (int i=0;i<s;i++) {
@@ -35,14 +38,22 @@ foo(Coroutine* c) {
 		// this_co->status = SUSPEND;
 		// t.fctx = coroutine_yield(t);
 		// printf("%d : %d\n", i, s);
-		 printf("a");
-		register_timeout<CoScheduler<Coroutine, StackPool>>(20);
+		output.lock();
+		// printf("%d", msg<<std::this_thread::get_id());
+		CALC_CLOCK_T begin = CALC_CLOCK_NOW();
+		std::cout << "Thread: " << std::this_thread::get_id() << "Coroutine: " << c << ", Perform " << i << ": Total " << s << std::endl;
+		output.unlock();
+		if (!register_timeout<GCoScheduler>(20)) c->yield();
+		CALC_CLOCK_T end = CALC_CLOCK_NOW();
+		output.lock();
+		std::cout << "Coroutine: " << c << " returns after " << CALC_MS_CLOCK(end-begin) << "ms" << std::endl;
+ 		output.unlock();
 		// c->yield();
 		// co->main_ctx = t.fctx;
 		// coroutine_yield();
 	}
 
-	std::cout << "foo ended" << std::endl;
+	// std::cout << "foo ended" << std::endl;
 }
 
 
@@ -122,15 +133,8 @@ foo(Coroutine* c) {
 
 int 
 main(int argc, char* argv[]) {
-	// 创建一个协程调度器
-	// auto sp = std::make_shared<StackPool>();
     GCoScheduler& S = GCoScheduler::open();
-	// S.init(sp);
-	S.init();
-// 	#ifdef TIMEOUTPUT
-// 	time_t begin_time = time(nullptr);
-// 	CALC_CLOCK_T begin_clock = CALC_CLOCK_NOW();
-// 	#endif
+	S.start();
 	int num_co = 30;
 	if (argc > 1)
 	{
@@ -141,7 +145,8 @@ main(int argc, char* argv[]) {
 	for (int i = 0; i < max_coroutine_number; ++i) {
 		S.new_coroutine(foo, nullptr);
   	}
-	S.start();
+
 	S.run();
+	S.close();
 	return 0;
 }
