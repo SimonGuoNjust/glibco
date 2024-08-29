@@ -6,7 +6,7 @@
 
 std::map<std::thread::id, void*> scheduler_store;
 
-using TimerManager=TimeWheel;
+typedef TimeWheel TimerManager;
 
 template<typename CoroutineType,
 typename MemoryManager>
@@ -36,8 +36,7 @@ private:
         {
             return self;
         }
-
-        
+ 
         CoroutineLink* pNext;
         CoroutineLink* pPrev;
         coroutine_queue* pLink;
@@ -65,28 +64,6 @@ public:
     {
         this->close();
     }
-    
-
-    // static CoScheduler& open()
-    // {
-    //     static CoScheduler S;
-    //     return S;
-    // }
-
-    // void close()
-    // {
-    //     int i;
-    //     for (i = 0; i < this->coroutines.size(); i++) {
-    //         CoroutineType* co = this->coroutines[i];
-    //         if (co) {
-    //             co->close();
-    //         }
-    //     };
-    //     delete this->stack_pool;
-    //     delete this->pTimeout;
-    //     this->stack_pool = nullptr;
-    //     this->pTimeout = nullptr;
-    // }
 
     void close()
     {
@@ -164,12 +141,6 @@ public:
         std::invoke(&CoScheduler::run, this_);
     }
 
-    // long long loop()
-    // {
-    //     }
-    //     return switches;
-
-    // }
     int run_one()
     {
         CoroutineLink* p = coroutines -> head;
@@ -280,7 +251,5 @@ void register_timeout(size_t timeout)
     SchedulerType* sch = reinterpret_cast<SchedulerType*>(scheduler_store[pid]);
     sch -> add_coroutine_timeout(timeout);
 }
-
-typedef CoScheduler<Coroutine, StackPool> gCoScheduler;
 
 #endif

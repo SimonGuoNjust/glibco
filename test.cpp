@@ -1,6 +1,4 @@
-#include "gcoroutine.hpp"
-#include "scheduler.hpp"
-#include "multithread_scheduler.hpp"
+#include "glibco_all.hpp"
 #include <iostream>
 #include <chrono>
 // #define TIMEOUTPUT
@@ -37,8 +35,8 @@ foo(Coroutine* c) {
 		// this_co->status = SUSPEND;
 		// t.fctx = coroutine_yield(t);
 		// printf("%d : %d\n", i, s);
-		 vfprintf_s(stdout, "a", nullptr);
-		register_timeout<gCoScheduler>(20);
+		 printf("a");
+		register_timeout<CoScheduler<Coroutine, StackPool>>(20);
 		// c->yield();
 		// co->main_ctx = t.fctx;
 		// coroutine_yield();
@@ -126,7 +124,7 @@ int
 main(int argc, char* argv[]) {
 	// 创建一个协程调度器
 	// auto sp = std::make_shared<StackPool>();
-    ThreadPoolCoScheduler<Coroutine, StackPool> S;
+    GCoScheduler& S = GCoScheduler::open();
 	// S.init(sp);
 	S.init();
 // 	#ifdef TIMEOUTPUT

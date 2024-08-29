@@ -17,14 +17,17 @@ target_link_libraries(
     Boost::context
     Boost::system
 )
-file(
-    GLOB_RECURSE
-    SOURCE_LIST
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
-)
+# file(
+#     GLOB_RECURSE
+#     SOURCE_LIST
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
+# )
 
-add_library(colib_static STATIC ${SOURCE_LIST})
-add_library(colib_shared SHARED ${SOURCE_LIST})
+# add_library(colib_static STATIC ${SOURCE_LIST})
+# add_library(colib_shared SHARED ${SOURCE_LIST})
+
+add_library(colib_static STATIC src/glibco.cpp)
+add_library(colib_shared SHARED src/glibco.cpp)
 
 target_link_libraries(colib_static
 Boost::context

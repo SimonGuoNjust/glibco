@@ -217,9 +217,16 @@ typename MemoryManager>
 class ThreadPoolCoScheduler
 {
     typedef std::shared_ptr<MemoryManager> MemoryManagerPtr;
-public:
+private:
     ThreadPoolCoScheduler() : num_threads(6), mStop(false) {}
     ThreadPoolCoScheduler(int num_th) : num_threads(num_th), mStop(false) {}
+
+public:
+    static ThreadPoolCoScheduler& open()
+    {
+        static ThreadPoolCoScheduler sch;
+        return sch;
+    }
 
     template<typename Fn>
     int new_coroutine(Fn&& fn, void* args)
@@ -271,4 +278,5 @@ private:
     int next_th_idx = 0;
     bool mStop;
 };
+
 #endif
