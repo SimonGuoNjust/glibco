@@ -3,4 +3,4 @@
 #include "gcoroutine.hpp"
 #include "multithread_scheduler.hpp"
 
-typedef ThreadPoolCoScheduler<Coroutine, StackPool> GCoScheduler;
+typedef ThreadPoolCoScheduler<CoScheduler<Coroutine, StackPool>> NormalScheduler;

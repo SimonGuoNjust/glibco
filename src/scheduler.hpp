@@ -6,9 +6,6 @@
 
 typedef TimeWheel TimerManager;
 
-template<typename CoroutineType,
-typename MemoryManager>
-class ThreadPoolCoScheduler;
 
 template<typename CoroutineType,
 typename MemoryManager>

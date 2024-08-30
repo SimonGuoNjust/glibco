@@ -244,12 +244,9 @@ private:
     std::vector<std::thread> pool_;
 };
 
-template<typename CoroutineType,
-typename MemoryManager>
+template<typename CoSchedulerType>
 class ThreadPoolCoScheduler
 {
-    typedef std::shared_ptr<MemoryManager> MemoryManagerPtr;
-    typedef CoScheduler<CoroutineType, MemoryManager> CoSchedulerType;
     typedef std::shared_ptr<CoSchedulerType> CoSchedulerTypePtr;
     typedef std::unordered_map<thread_id, CoSchedulerTypePtr> CoSchedulerRecord;
 
