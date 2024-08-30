@@ -10,7 +10,7 @@
 #include "stackpool.hpp"
 using namespace boost::context::detail;
 
-typedef void(*fn_coroutine)(class Coroutine*);
+typedef void(*fn_coroutine)(void*);
 
 // using fn_coroutine = std::function<void(struct Coroutine*, void*)>;
 struct Stack;
@@ -52,7 +52,7 @@ public:
     fcontext_t run();
     void close();
     void resume();
-    fcontext_t yield(coroutine_status st = SUSPEND);
+    void yield(coroutine_status st = SUSPEND);
     
 };
 template<typename Fn, typename StackPool>
@@ -84,7 +84,7 @@ fcontext_t Coroutine::run()
 {
 	// transfer_t res_t{fctx};
 	status = RUNNING;
-	fn_(this);
+	fn_(this->args_);
 	return jump_fcontext(main_ctx_, nullptr).fctx;
 }
 
@@ -127,7 +127,6 @@ Coroutine* coroutine_new(StackPool* S, Fn&& func, void* args)
 
 	new_co->co_ctx_ = ctx;
 	new_co->status = READY;
-	// new_co->args_ = args;
 	return new_co;
 }
 
@@ -137,7 +136,7 @@ void Coroutine::resume()
 	co_ctx_ = jump_fcontext(co_ctx_, this).fctx;
 }
 
-fcontext_t Coroutine::yield(coroutine_status st)
+void Coroutine::yield(coroutine_status st)
 {
 	status = st;
 	main_ctx_ = jump_fcontext(main_ctx_, nullptr).fctx;

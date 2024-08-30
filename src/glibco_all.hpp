@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gcoroutine.hpp"
-#include "multithread_scheduler.hpp"
+#include "epoll_scheduler.hpp"
 
 typedef ThreadPoolCoScheduler<CoScheduler<Coroutine, StackPool>> NormalScheduler;
+typedef ThreadPoolCoScheduler<EpollCoScheduler<Coroutine, StackPool>> EpollScheduler;

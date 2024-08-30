@@ -24,7 +24,8 @@ std::mutex output;
 // }
 
 void
-foo(Coroutine* c) {
+foo(void* arg) {
+	// Coroutine* c = reinterpret_cast<Coroutine*>(arg);
 	// int start = *reinterpret_cast<int*>(ud);
 	int start = 0;
 	srand(std::chrono::high_resolution_clock::now().time_since_epoch().count());
@@ -41,12 +42,12 @@ foo(Coroutine* c) {
 		output.lock();
 		// printf("%d", msg<<std::this_thread::get_id());
 		CALC_CLOCK_T begin = CALC_CLOCK_NOW();
-		std::cout << "Thread: " << std::this_thread::get_id() << "Coroutine: " << c << ", Perform " << i << ": Total " << s << std::endl;
+		std::cout << "Thread: " << std::this_thread::get_id() << ", Perform " << i << ": Total " << s << std::endl;
 		output.unlock();
-		if (!register_timeout<GCoScheduler>(20)) c->yield();
+		!register_timeout<NormalScheduler>(20);
 		CALC_CLOCK_T end = CALC_CLOCK_NOW();
 		output.lock();
-		std::cout << "Coroutine: " << c << " returns after " << CALC_MS_CLOCK(end-begin) << "ms" << std::endl;
+		std::cout << " returns after " << CALC_MS_CLOCK(end-begin) << "ms" << std::endl;
  		output.unlock();
 		// c->yield();
 		// co->main_ctx = t.fctx;
@@ -133,7 +134,7 @@ foo(Coroutine* c) {
 
 int 
 main(int argc, char* argv[]) {
-    GCoScheduler& S = GCoScheduler::open();
+    NormalScheduler& S = NormalScheduler::open();
 	S.start();
 	int num_co = 30;
 	if (argc > 1)

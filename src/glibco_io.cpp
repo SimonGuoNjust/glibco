@@ -1,6 +1,5 @@
 #ifdef __linux__
 
-
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/syscall.h>
@@ -20,13 +19,6 @@
 #include <stdarg.h>
 #include "glibco_all.hpp"
 
-template <typename CoroutineType,
-typename MemoryManager>
-class EpollManager;
-
-typedef ThreadPoolCoScheduler<EpollCoScheduler<Coroutine, StackPool>> EpollScheduler;
-
-enum {__EPOLL_SIZE = 10240};
 
 typedef int (*socket_pfn_t)(int domain, int type, int protocol);
 typedef int (*connect_pfn_t)(int socket, const struct sockaddr *address, socklen_t address_len);
@@ -72,58 +64,14 @@ static send_pfn_t g_sys_send_func 		= (send_pfn_t)dlsym(RTLD_NEXT,"send");
 static recv_pfn_t g_sys_recv_func 		= (recv_pfn_t)dlsym(RTLD_NEXT,"recv");
 
 static epoll_create_pfn_t g_sys_epoll_create_func 	= (epoll_create_pfn_t )dlsym(RTLD_NEXT,"epoll_create");
-static epoll_ctl_pfn_t g_sys_epoll_create_func 	= (epoll_ctl_pfn_t )dlsym(RTLD_NEXT,"epoll_ctl");
-static epoll_wait_pfn_t g_sys_epoll_create_func 	= (epoll_wait_pfn_t )dlsym(RTLD_NEXT,"epoll_wait");
+static epoll_ctl_pfn_t g_sys_epoll_ctl_func 	= (epoll_ctl_pfn_t )dlsym(RTLD_NEXT,"epoll_ctl");
+static epoll_wait_pfn_t g_sys_epoll_wait_func 	= (epoll_wait_pfn_t )dlsym(RTLD_NEXT,"epoll_wait");
 
 static setsockopt_pfn_t g_sys_setsockopt_func 
 										= (setsockopt_pfn_t)dlsym(RTLD_NEXT,"setsockopt");
 static fcntl_pfn_t g_sys_fcntl_func 	= (fcntl_pfn_t)dlsym(RTLD_NEXT,"fcntl");
 
 #define HOOK_SYS_FUNC(name) if( !g_sys_##name##_func ) { g_sys_##name##_func = (name##_pfn_t)dlsym(RTLD_NEXT,#name); }
-
-template <typename CoroutineType,
-typename MemoryManager>
-class EpollCoScheduler : public CoScheduler
-{
-public:
-	EpollCoScheduler(): CoScheduler(), epoll_fd(epoll_create(__EPOLL_SIZE)) {
-		epoll_events_ = (struct epoll_event*)calloc( 1, __EPOLL_SIZE * sizeof( struct epoll_event ) );
-	}
-
-	void run()
-	{
-		for(;;)
-        {
-			process_epoll();
-            process_timeout();
-            run_one();
-            if (nco <= 0) break;
-        }
-	}
-
-	int run_epoll_ctl(int op, int fd, struct epoll_event * ev)
-	{
-		ev->data.ptr = reinterpret_cast<void*>(running);
-		int ret = epoll_ctl(epoll_fd, op, fd, ev);
-		return ret;
-	}
-
-private:
-
-	int process_epoll()
-	{
-		int ret = epoll_wait(epoll_id, epoll_events_, __EPOLL_SIZE, 0);
-		for (int i = 0; i < ret; i++)
-		{
-			TimerTask* p = epoll_events_[i].data.ptr;
-			pTimeout->do_timeout(p);
-		}
-	}
-
-	int epoll_fd;
-	struct epoll_event* epoll_events_;
-
-};
 
 struct EpollTask : public TimerTask
 {
@@ -334,24 +282,28 @@ int connect(int fd, const struct sockaddr *address, socklen_t address_len)
 		return ret;
 	}
 
-	int pollret = 0;
-	struct pollfd pf = { 0 };
+	ret = 0;
+	EpollTask* arg = new EpollTask;
+	arg->fd = fd;
+	arg->events.events = (EPOLLOUT | EPOLLERR | EPOLLHUP);
+	arg->events.data.ptr = arg;
+	arg->pfnProcess = &EpollScheduler::coroutine_timeout_func;
+	auto co_sch = EpollScheduler::open().get_this_thread_copool();
+	
+	// struct pollfd pf = { 0 };
 
 	// 75s是内核默认的超时时间
 	for(int i=0;i<3;i++) //25s * 3 = 75s
 	{
-		memset( &pf,0,sizeof(pf) );
-		pf.fd = fd;
-		pf.events = ( POLLOUT | POLLERR | POLLHUP );
-
-		pollret = poll( &pf,1,25000 );
-
-		if( 1 == pollret  )
+		int ret = co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), 2500);
+		
+		if( 1 == ret  )
 		{
 			break;
 		}
 	}
-	if( pf.revents & POLLOUT ) //connect succ
+
+	if( arg->events.events & POLLOUT ) //connect succ
 	{
 		errno = 0;
 		return 0;
@@ -368,7 +320,7 @@ int connect(int fd, const struct sockaddr *address, socklen_t address_len)
 	else
 	{
 		errno = ETIMEDOUT;
-	} 
+	}
 	return ret;
 }
 
@@ -399,17 +351,12 @@ ssize_t read( int fd, void *buf, size_t nbyte )
 
     
 	EpollTask* arg = new EpollTask;
+	arg->fd = fd;
 	arg->events.events = EPOLLIN | EPOLLERR | EPOLLHUP;
-
+	arg->events.data.ptr = arg;
 	auto co_sch = EpollScheduler::open().get_this_thread_copool();
-	int ret = co_sch -> run_epoll_ctl(EPOLL_CTL_ADD, fd, &(arg->events));
-	if (ret > 0)
-	{
-		register_timeout<EpollScheduler>(static_cast<size_t>(timeout));
-		RemoveFromLink<TimerTask, TimerTaskLink>(arg);
-		co_sch -> run_epoll_ctl(EPOLL_CTL_DEL, fd, &(arg->events));
-	}
-	delete arg;
+
+	int ret = co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), timeout);
 
 	ssize_t readret = g_sys_read_func( fd,(char*)buf ,nbyte );
 
@@ -452,12 +399,14 @@ ssize_t write( int fd, const void *buf, size_t nbyte )
 
 	while( wrotelen < nbyte )
 	{
-		struct pollfd pf = { 0 };
-		pf.fd = fd;
-		pf.events = ( POLLOUT | POLLERR | POLLHUP );
+		EpollTask* arg = new EpollTask;
+		arg->fd = fd;
+		arg->events.events = EPOLLOUT | EPOLLERR | EPOLLHUP;
+		arg->events.data.ptr = arg;
+		auto co_sch = EpollScheduler::open().get_this_thread_copool();
 
 		//监听可读事件
-		poll( &pf,1,timeout );
+		co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), timeout);
 
 		writeret = g_sys_write_func( fd,(const char*)buf + wrotelen,nbyte - wrotelen );
 		
@@ -474,10 +423,38 @@ ssize_t write( int fd, const void *buf, size_t nbyte )
 	return wrotelen;
 }
 
-int schedule_task(struct pollfd fds[], nfds_t nfds, int timeout, poll_pfn_t pollfunc)
+int setsockopt(int fd, int level, int option_name,
+			                 const void *option_value, socklen_t option_len)
 {
-    
+	HOOK_SYS_FUNC( setsockopt );
+
+	SocketInfo *lp = SocketInfoManager::open().get( fd );
+
+	if( lp && SOL_SOCKET == level )
+	{
+		// 设置socket的读写超时时间
+		struct timeval *val = (struct timeval*)option_value;
+		if( SO_RCVTIMEO == option_name  ) 
+		{
+			memcpy( &lp->read_timeout,val,sizeof(*val) );
+		}
+		else if( SO_SNDTIMEO == option_name )
+		{
+			memcpy( &lp->write_timeout,val,sizeof(*val) );
+		}
+	}
+	return g_sys_setsockopt_func( fd,level,option_name,option_value,option_len );
 }
 
+
+int glibco_accept(int fd, struct sockaddr *addr, socklen_t *len)
+{
+	int fd_ = accept(fd, addr, len);
+	if (fd_ < 0)
+	{
+		return fd;
+	}
+	SocketInfoManager::open().set( fd_ );
+}
 
 #endif

@@ -26,8 +26,8 @@ target_link_libraries(
 # add_library(colib_static STATIC ${SOURCE_LIST})
 # add_library(colib_shared SHARED ${SOURCE_LIST})
 
-add_library(colib_static STATIC src/glibco.cpp)
-add_library(colib_shared SHARED src/glibco.cpp)
+add_library(colib_static STATIC src/glibco_io.cpp)
+add_library(colib_shared SHARED src/glibco_io.cpp)
 
 target_link_libraries(colib_static
 Boost::context

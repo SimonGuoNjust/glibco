@@ -268,7 +268,7 @@ public:
     }
 
     template<typename Fn>
-    int new_coroutine(Fn&& fn, void* args)
+    void new_coroutine(Fn&& fn, void* args)
     {
         std::lock_guard<std::mutex> lock(co_pool_lock);
         CoSchedulerTypePtr choosen_sch = (*(next_th_idx)).second;
@@ -278,12 +278,8 @@ public:
 
     bool add_coroutine_timeout(size_t tm)
     {
-        auto id = std::this_thread::get_id();
-        std::unique_lock<std::mutex> lock(co_pool_lock);
-        auto iter_ = co_pools_.find(id);
-        if (iter_ == co_pools_.end()) return false;
-        lock.unlock();
-        (*iter_).second->add_coroutine_timeout(coroutine_timeout_func, tm);
+        auto co_sch = get_this_thread_copool();
+        co_sch->add_coroutine_timeout(coroutine_timeout_func, tm);
         return true;
     }
 

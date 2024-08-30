@@ -69,7 +69,7 @@ public:
                 PopHead<CoroutineLink, coroutine_queue>(coroutines+i);
                 p -> self -> close();
                 p -> self = nullptr;
-                free(p);
+                delete p;
                 p = q -> head;
             }
         };
@@ -98,10 +98,9 @@ public:
     }
 
     template<typename Fn>
-    void add_timeout(Fn&& fn, void* args, int timeout)
+    TimerTask* add_timeout(Fn&& fn, void* args, int timeout)
     {
-        TimerTask& tm = *((TimerTask*)malloc(sizeof(TimerTask)));
-        memset(&tm, 0 , sizeof(tm));
+        TimerTask& tm = *(new TimerTask);
         tm.pfnProcess = fn;
         tm.pArg = args;
         unsigned long long now = GetTickMS();
@@ -110,8 +109,10 @@ public:
         if (ret < 0)
         {
             std::cout << "add task error" << std::endl;
-            free(&tm);
+            delete &tm;
+            return nullptr;
         }
+        return &tm;
     }
 
     void wake_coroutine(CoroutineLink* p)
@@ -160,7 +161,7 @@ public:
                 p -> self ->close();
                 p -> self = nullptr;
                 nco--;
-                free(p);
+                delete p;
                 return 1;
             }
             else if (p -> self ->status == WAITING)
@@ -177,7 +178,7 @@ public:
         return -1;    
     }
 
-    int process_timeout()
+    void process_timeout()
     {
         TimerTaskLink timeout_list;
         TimerTaskLink* ptimeout_list = &timeout_list;
@@ -198,7 +199,7 @@ public:
             {
                 pTimeout->do_timeout(p);
             }
-            free(p);
+            delete p;
             p = ptimeout_list->head;
         }
     }
@@ -231,7 +232,7 @@ public:
                     p -> self ->close();
                     p -> self = nullptr;
                     nco--;
-                    free(p);
+                    delete p;
                 }
                 else
                 {

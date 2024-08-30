@@ -12,7 +12,7 @@ foreach(f ${TEST_CPP_LIST})
     # rename '/' and '.' to '_'
     string(REGEX REPLACE "/|\\." "_" target_name ${target_name})
     add_executable(${target_name} ${f})
-    target_link_libraries(${target_name} colib_static Boost::context
+    target_link_libraries(${target_name} colib_shared Boost::context
     Boost::system)
 endforeach()
 
