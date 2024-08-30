@@ -104,7 +104,8 @@ public:
 	int run_epoll_ctl(int op, int fd, struct epoll_event * ev)
 	{
 		ev->data.ptr = reinterpret_cast<void*>(running);
-		return epoll_ctl(epoll_fd, op, fd, ev);
+		int ret = epoll_ctl(epoll_fd, op, fd, ev);
+		return ret;
 	}
 
 private:
@@ -112,6 +113,11 @@ private:
 	int process_epoll()
 	{
 		int ret = epoll_wait(epoll_id, epoll_events_, __EPOLL_SIZE, 0);
+		for (int i = 0; i < ret; i++)
+		{
+			TimerTask* p = epoll_events_[i].data.ptr;
+			pTimeout->do_timeout(p);
+		}
 	}
 
 	int epoll_fd;
@@ -396,7 +402,14 @@ ssize_t read( int fd, void *buf, size_t nbyte )
 	arg->events.events = EPOLLIN | EPOLLERR | EPOLLHUP;
 
 	auto co_sch = EpollScheduler::open().get_this_thread_copool();
-	int ret = EpollScheduler::open().get_this_thread_copool() -> run_epoll_ctl(EPOLL_CTL_ADD, fd, &(arg->events));
+	int ret = co_sch -> run_epoll_ctl(EPOLL_CTL_ADD, fd, &(arg->events));
+	if (ret > 0)
+	{
+		register_timeout<EpollScheduler>(static_cast<size_t>(timeout));
+		RemoveFromLink<TimerTask, TimerTaskLink>(arg);
+		co_sch -> run_epoll_ctl(EPOLL_CTL_DEL, fd, &(arg->events));
+	}
+	delete arg;
 
 	ssize_t readret = g_sys_read_func( fd,(char*)buf ,nbyte );
 
