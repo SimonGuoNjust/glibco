@@ -28,6 +28,8 @@ foo(void* arg) {
 	// Coroutine* c = reinterpret_cast<Coroutine*>(arg);
 	// int start = *reinterpret_cast<int*>(ud);
 	int start = 0;
+
+	char b[1024];
 	srand(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	// std::mt19937 generator;
 	// std::uniform_int_distribution<int> distribution(1, 10);

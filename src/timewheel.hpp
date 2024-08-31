@@ -39,6 +39,7 @@ struct TimerTask
 	void *pArg; // self routine pArg 是pfnPrepare和pfnProcess的参数
 
 	bool bTimeout; // 是否已经超时
+    bool needClean = true;
 };
 
 class TimeWheel

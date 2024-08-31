@@ -14,7 +14,7 @@ public:
 		epoll_events_ = (struct epoll_event*)calloc( 1, __EPOLL_SIZE * sizeof( struct epoll_event ) );
 	}
 
-    void move_coroutine_timeout(size_t timeout_, TimerTask* tm)
+    void move_coroutine_timeout(int timeout_, TimerTask* tm)
     {
         tm -> pArg = this->running;
         unsigned long long now = GetTickMS();
@@ -23,23 +23,49 @@ public:
         if (ret < 0)
         {
             std::cout << "add task error" << std::endl;
+            delete tm;
+            return;
         }
         this->running->self -> yield(WAITING);
     }
-
-	int run_epoll_ctl(TimerTask* arg, int op, int fd, struct epoll_event * ev, size_t timeout_)
+    
+	int run_epoll_ctl(TimerTask* arg, int op, int fd, struct epoll_event * ev, int timeout_)
 	{
 		int ret = epoll_ctl(epoll_fd, op, fd, ev);
-        if (ret > 0)
+
+        if (ret <0 && errno == EPERM)
+        {
+            printf("epoll register error %d: %s \n", errno, strerror(errno));
+            delete arg;
+            return -1;
+        }
+        else
         {
             this->move_coroutine_timeout(timeout_, arg);
-            epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, ev);
+            RemoveFromLink<TimerTask, TimerTaskLink>(arg);
         }
+        ev->data.ptr=nullptr;
+        epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, ev);
+        delete arg;
 
 		return ret;
 	}
 
-private:
+    static void global_run(void* objectPtr)
+    {
+        EpollCoScheduler* this_ = reinterpret_cast<EpollCoScheduler*>(objectPtr);
+        this_->run();
+    }
+
+    void run()
+    {
+        for(;;)
+        {
+            this->process_timeout();
+            this->run_one();
+            if (this->nco <= 0) break;
+        }
+    }
 
 	void process_timeout()
     {
@@ -47,7 +73,8 @@ private:
         TimerTaskLink* ptimeout_list = &timeout_list;
 		TimerTaskLink epoll_awake_list;
 		TimerTaskLink* pepoll_awake_list = &epoll_awake_list;
-
+        memset(pepoll_awake_list, 0, sizeof(epoll_awake_list));
+        
 		process_epoll(pepoll_awake_list);
 
         unsigned long long now = GetTickMS();
@@ -66,26 +93,30 @@ private:
         p = pepoll_awake_list -> head;
         while(p)
         {
-            PopHead<TimerTask, TimerTaskLink>(ptimeout_list);
+            PopHead<TimerTask, TimerTaskLink>(pepoll_awake_list);
             if (p->pfnProcess)
             {
                 this->pTimeout->do_timeout(p);
             }
-            delete p;
+            if (p -> needClean)
+            {
+                delete p;
+            }
             p = pepoll_awake_list->head;
         }
     }
 
 	void process_epoll(TimerTaskLink* list)
 	{
-		int ret = epoll_wait(epoll_fd, epoll_events_, __EPOLL_SIZE, 0);
+		int ret = epoll_wait(epoll_fd, epoll_events_, __EPOLL_SIZE, 1);
 		for (int i = 0; i < ret; i++)
 		{
-			TimerTask* p = epoll_events_[i].data.ptr;
+			TimerTask* p = reinterpret_cast<TimerTask*>(epoll_events_[i].data.ptr);
 			AddTail(list, p);
 		}
 	}
 
+private:
 	int epoll_fd;
 	struct epoll_event* epoll_events_;
 

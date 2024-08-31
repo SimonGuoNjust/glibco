@@ -77,9 +77,6 @@ struct EpollTask : public TimerTask
 {
 	int fd;
 	struct epoll_event events;
-
-	void* run_co;
-
 };
 
 struct SocketInfo
@@ -283,27 +280,31 @@ int connect(int fd, const struct sockaddr *address, socklen_t address_len)
 	}
 
 	ret = 0;
-	EpollTask* arg = new EpollTask;
-	arg->fd = fd;
-	arg->events.events = (EPOLLOUT | EPOLLERR | EPOLLHUP);
-	arg->events.data.ptr = arg;
-	arg->pfnProcess = &EpollScheduler::coroutine_timeout_func;
 	auto co_sch = EpollScheduler::open().get_this_thread_copool();
-	
+	uint32_t event = 0;
 	// struct pollfd pf = { 0 };
 
 	// 75s是内核默认的超时时间
 	for(int i=0;i<3;i++) //25s * 3 = 75s
 	{
+		EpollTask* arg = new EpollTask;
+		memset(arg, 0, sizeof(arg));
+		arg->fd = fd;
+		arg->needClean = false;
+		arg->events.events = (EPOLLOUT | EPOLLERR | EPOLLHUP);
+		arg->events.data.ptr = arg;
+		arg->pfnProcess = &EpollScheduler::coroutine_timeout_func;
+
 		int ret = co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), 2500);
 		
 		if( 1 == ret  )
 		{
 			break;
+			event = arg -> events.events;
 		}
 	}
 
-	if( arg->events.events & POLLOUT ) //connect succ
+	if( event & POLLOUT ) //connect succ
 	{
 		errno = 0;
 		return 0;
@@ -351,18 +352,27 @@ ssize_t read( int fd, void *buf, size_t nbyte )
 
     
 	EpollTask* arg = new EpollTask;
+	memset(arg, 0, sizeof(arg));
 	arg->fd = fd;
-	arg->events.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+	arg->needClean = false;
+	arg->events.events = (EPOLLIN | EPOLLERR | EPOLLHUP);
 	arg->events.data.ptr = arg;
+	arg->pfnProcess = &EpollScheduler::coroutine_timeout_func;
 	auto co_sch = EpollScheduler::open().get_this_thread_copool();
 
 	int ret = co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), timeout);
+	
+	if (ret < 0)
+	{
+		printf("CO_ERR: epoll error at file %d errno %d poll ret %d timeout %d \n",
+					fd, errno, ret,timeout);
+	}
 
 	ssize_t readret = g_sys_read_func( fd,(char*)buf ,nbyte );
 
 	if( readret < 0 )
 	{
-		printf("CO_ERR: read fd %d ret %ld errno %d poll ret %d timeout %d",
+		printf("CO_ERR: read fd %d ret %ld errno %d poll ret %d timeout %d \n",
 					fd,readret,errno, ret,timeout);
 	}
 
@@ -381,6 +391,7 @@ ssize_t write( int fd, const void *buf, size_t nbyte )
 		ssize_t ret = g_sys_write_func( fd,buf,nbyte );
 		return ret;
 	}
+
 	size_t wrotelen = 0;
 	int timeout = ( lp->write_timeout.tv_sec * 1000 ) 
 				+ ( lp->write_timeout.tv_usec / 1000 );
@@ -396,15 +407,16 @@ ssize_t write( int fd, const void *buf, size_t nbyte )
 	{
 		wrotelen += writeret;	
 	}
-
+	auto co_sch = EpollScheduler::open().get_this_thread_copool();
 	while( wrotelen < nbyte )
 	{
 		EpollTask* arg = new EpollTask;
+		memset(arg, 0, sizeof(arg));
 		arg->fd = fd;
-		arg->events.events = EPOLLOUT | EPOLLERR | EPOLLHUP;
+		arg->needClean = false;
+		arg->events.events = (EPOLLOUT | EPOLLERR | EPOLLHUP);
 		arg->events.data.ptr = arg;
-		auto co_sch = EpollScheduler::open().get_this_thread_copool();
-
+		arg->pfnProcess = &EpollScheduler::coroutine_timeout_func;
 		//监听可读事件
 		co_sch -> run_epoll_ctl(arg, EPOLL_CTL_ADD, fd, &(arg->events), timeout);
 
@@ -452,9 +464,10 @@ int glibco_accept(int fd, struct sockaddr *addr, socklen_t *len)
 	int fd_ = accept(fd, addr, len);
 	if (fd_ < 0)
 	{
-		return fd;
+		return fd_;
 	}
 	SocketInfoManager::open().set( fd_ );
+	return fd_;
 }
 
 #endif

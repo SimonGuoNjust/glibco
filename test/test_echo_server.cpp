@@ -10,8 +10,18 @@
 #include<sys/types.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <queue>
+#include <shared_mutex>
 #include "../src/glibco_all.hpp"
 using namespace std;
+
+queue<int> fds;
+
+struct args
+{
+    queue<int>* pfds;
+    mutex fds_lock;
+};
 
 static void SetAddr(const char *pszIP,const unsigned short shPort,struct sockaddr_in &addr)
 {
@@ -55,48 +65,76 @@ static int SetNonBlock(int iSock)
 
 static void readwrite_func(void* arg)
 {
-    task* t = reinterpret_cast<task*>(arg);
-    int fd = t->fd;
-    char buf[1024];
+    args* pArgs = reinterpret_cast<args*>(arg);
+
+    int fd = -1;
+    while(1)
+    {
+        unique_lock<mutex> lk(pArgs->fds_lock);
+        queue<int>& fds_ = *(pArgs->pfds);
+        if (fds_.empty())
+        {
+            lk.unlock();
+            register_timeout<EpollScheduler>(1000);
+        }
+        else
+        {
+            fd = pArgs->pfds->front();
+            pArgs->pfds->pop();
+            lk.unlock();
+            break;
+        }
+    }
+
+    printf("processing fd : %d \n", fd);
+
+    char buf[512];
     for (;;)
     {
         int ret = read(fd, buf, sizeof(buf));
         if (ret > 0)
         {
+            printf("echo %s fd %d\n size %d ", buf,fd, ret);
             ret = write(fd, buf, ret);
         }
         if( ret <= 0 )
         {
+            printf("echo errno %d (%s)\n", errno, strerror(errno));
             if (errno == EAGAIN)
                 continue;
             close(fd);
             break;
         }
     }
-    delete t;
 };
 
-static void accept_func(void*)
+static void accept_func(void* arg)
 {
+    args* pArgs = reinterpret_cast<args*>(arg);
+
     for (;;)
     {
         struct sockaddr_in addr; //maybe sockaddr_un;
 		memset( &addr,0,sizeof(addr) );
 		socklen_t len = sizeof(addr);
 		// accept
+        // printf("try accept at tcp s : %d \n", g_listen_fd);
 		int fd = glibco_accept(g_listen_fd, (struct sockaddr *)&addr, &len);
 		if( fd < 0 )
 		{
 			// 意思是，如果accept失败了，没办法，暂时切出去
+            printf("waiting connect \n");
             register_timeout<EpollScheduler>(1000);
 			continue;
 		}
-        else
-        {
-            task* t = new task;
-            t->fd = fd;
-            EpollScheduler::open().new_coroutine(readwrite_func, t);
-        }
+
+        printf("One connected %d \n", fd);
+        // {
+        //     printf("push %d", fd);
+        {lock_guard<mutex> lk(pArgs->fds_lock);
+        pArgs->pfds->push(fd);}
+        // }
+        register_timeout<EpollScheduler>(10);
     }
 }
 
@@ -126,13 +164,16 @@ static int CreateTcpSocket(const unsigned short shPort /* = 0 */,const char *psz
 	return fd;
 }
 
+
 int main(int argc,char *argv[])
 {
     
     // first step ->create socket for server
-    if (argc <= 2) return -1; 
+    if (argc <= 3) return -1; 
     const char *ip = argv[1];
 	int port = atoi( argv[2] );
+    // int num_thread = atoi( argv[3] );
+    int num_cos = atoi( argv[3] );
 
     g_listen_fd = CreateTcpSocket( port,ip,true );
     listen( g_listen_fd,1024 );
@@ -145,36 +186,21 @@ int main(int argc,char *argv[])
 
     SetNonBlock( g_listen_fd );
 
-    pid_t pid;
-    pid = fork();
-    if (pid == 0)
+    EpollScheduler& S = EpollScheduler::open();
+    S.start();
+
+    args* readwrite_arg = new args;
+    readwrite_arg->pfds = &fds;
+
+    S.new_coroutine(accept_func, readwrite_arg);
+
+    for (int i = 0; i < num_cos; i++)
     {
-        EpollScheduler& S = EpollScheduler::open();
-	    S.start();
-        S.new_coroutine(accept_func, nullptr);
-        S.run();
-        S.close();
+        S.new_coroutine(readwrite_func, readwrite_arg);
     }
-    else
-    {
-        EpollScheduler& cli_S = EpollScheduler::open();
-	    cli_S.start();
-        int cli_fd = socket(PF_INET, SOCK_STREAM, 0);
-        struct sockaddr_in addr;
-        SetAddr(ip, port, addr);
-        
-        int ret = connect(cli_fd,(struct sockaddr*)&addr,sizeof(addr));
-        if ( errno == EALREADY || errno == EINPROGRESS )
-		{
-            sleep(1);
-            int error = 0;
-            uint32_t socklen = sizeof(error);
-            errno = 0;
-            ret = getsockopt(cli_fd, SOL_SOCKET, SO_ERROR,(void *)&error,  &socklen);
-            printf("connect susccess");
-        }
-    }
-    
+    S.run();
+    S.close();
+    delete readwrite_arg;
 
     // }
 

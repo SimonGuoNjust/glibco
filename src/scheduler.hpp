@@ -208,9 +208,10 @@ public:
     {
         for(;;)
         {
-            process_timeout();
+            this->process_timeout();
             // if (run_one() == -1) break;
-            run_one();
+            // if (nco > 1) std::cout << "Thread:" << std::this_thread::get_id() << " nco: " << nco << std::endl;;
+            this->run_one();
             if (nco <= 0) break;
         }
     }
